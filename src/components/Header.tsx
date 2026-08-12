@@ -9,9 +9,13 @@ import {
   Play, 
   History, 
   ShoppingCart,
-  Store
+  Store,
+  Users,
+  ShieldCheck,
+  UserCheck,
+  ChevronDown
 } from 'lucide-react';
-import { BusinessProfile } from '../types';
+import { BusinessProfile, AppUser } from '../types';
 import { BUSINESS_PROFILES } from '../data/initialData';
 
 interface HeaderProps {
@@ -27,8 +31,12 @@ interface HeaderProps {
   onOpenPO: () => void;
   onOpenActivityLog: () => void;
   onExportCSV: () => void;
-  activeTab: 'inventory' | 'analytics' | 'insights';
-  onChangeTab: (tab: 'inventory' | 'analytics' | 'insights') => void;
+  activeTab: 'inventory' | 'analytics' | 'insights' | 'users';
+  onChangeTab: (tab: 'inventory' | 'analytics' | 'insights' | 'users') => void;
+  currentUser: AppUser;
+  users: AppUser[];
+  onSwitchUser: (user: AppUser) => void;
+  pendingApprovalsCount: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,6 +54,10 @@ export const Header: React.FC<HeaderProps> = ({
   onExportCSV,
   activeTab,
   onChangeTab,
+  currentUser,
+  users,
+  onSwitchUser,
+  pendingApprovalsCount,
 }) => {
   const totalAlerts = lowStockCount + outOfStockCount;
 
@@ -110,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
           <nav className="hidden md:flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button
               onClick={() => onChangeTab('inventory')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'inventory'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -127,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => onChangeTab('insights')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'insights'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -139,7 +151,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => onChangeTab('analytics')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'analytics'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -148,23 +160,66 @@ export const Header: React.FC<HeaderProps> = ({
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Analytics
             </button>
+
+            <button
+              onClick={() => onChangeTab('users')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all relative ${
+                activeTab === 'users'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Users className="h-3.5 w-3.5 text-emerald-500" />
+              Users & Access
+              {pendingApprovalsCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950">
+                  {pendingApprovalsCount}
+                </span>
+              )}
+            </button>
           </nav>
 
-          {/* Right Action Tools */}
+          {/* Right Action Tools & Active User Selector */}
           <div className="flex items-center gap-2">
+            {/* Active User Quick Switcher */}
+            <div className="relative flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1.5 px-2 py-0.5">
+                {currentUser.role === 'ADMIN' ? (
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <UserCheck className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                )}
+                <select
+                  value={currentUser.id}
+                  onChange={(e) => {
+                    const u = users.find((x) => x.id === e.target.value);
+                    if (u) onSwitchUser(u);
+                  }}
+                  className="text-xs font-bold bg-transparent border-none focus:ring-0 p-0 cursor-pointer text-slate-800 dark:text-slate-200 pr-1"
+                  title="Switch current user identity"
+                >
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id} className="dark:bg-slate-800">
+                      {u.name} ({u.role === 'ADMIN' ? 'Admin' : 'Staff User'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Live Traffic Simulation Switch */}
             <button
               onClick={onToggleSimulation}
               title={isSimulating ? "Pause live sales simulation" : "Start live sales traffic simulation"}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                 isSimulating
                   ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800 animate-pulse'
                   : 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-100'
               }`}
             >
               <Play className={`h-3.5 w-3.5 ${isSimulating ? 'fill-rose-600' : ''}`} />
-              <span className="hidden sm:inline">
-                {isSimulating ? 'Simulating Sales...' : 'Simulate Sales'}
+              <span className="hidden xl:inline">
+                {isSimulating ? 'Simulating...' : 'Simulate Sales'}
               </span>
             </button>
 
@@ -225,15 +280,15 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex md:hidden items-center justify-around py-2 border-t border-slate-200 dark:border-slate-800">
           <button
             onClick={() => onChangeTab('inventory')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md ${
+            className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
               activeTab === 'inventory' ? 'bg-slate-900 text-white' : 'text-slate-600'
             }`}
           >
-            Inventory ({totalAlerts ? `! ${totalAlerts}` : 'OK'})
+            Inventory ({totalAlerts ? `!${totalAlerts}` : 'OK'})
           </button>
           <button
             onClick={() => onChangeTab('insights')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md ${
+            className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
               activeTab === 'insights' ? 'bg-indigo-600 text-white' : 'text-slate-600'
             }`}
           >
@@ -241,14 +296,23 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           <button
             onClick={() => onChangeTab('analytics')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md ${
+            className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
               activeTab === 'analytics' ? 'bg-slate-900 text-white' : 'text-slate-600'
             }`}
           >
             Analytics
+          </button>
+          <button
+            onClick={() => onChangeTab('users')}
+            className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
+              activeTab === 'users' ? 'bg-emerald-600 text-white' : 'text-slate-600'
+            }`}
+          >
+            Users ({pendingApprovalsCount})
           </button>
         </div>
       </div>
     </header>
   );
 };
+

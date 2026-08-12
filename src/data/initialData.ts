@@ -1,4 +1,78 @@
-import { InventoryItem, StockLog, BusinessProfile } from '../types';
+import { InventoryItem, StockLog, BusinessProfile, AppUser, ApprovalRequest } from '../types';
+
+export const INITIAL_USERS: AppUser[] = [
+  {
+    id: 'usr-admin-1',
+    name: 'Sarah Jenkins',
+    email: 'admin@inventorybrief.com',
+    role: 'ADMIN',
+    department: 'Supply Chain Management',
+    status: 'ACTIVE',
+    createdAt: '2026-01-15',
+    avatarBg: 'bg-emerald-600',
+  },
+  {
+    id: 'usr-user-1',
+    name: 'Rahul Sharma',
+    email: 'rahul.s@inventorybrief.com',
+    role: 'USER',
+    department: 'Warehouse Operations',
+    status: 'ACTIVE',
+    createdAt: '2026-02-10',
+    avatarBg: 'bg-indigo-600',
+  },
+  {
+    id: 'usr-user-2',
+    name: 'Ananya Patel',
+    email: 'ananya.p@inventorybrief.com',
+    role: 'USER',
+    department: 'Store Clerk / Inventory Entry',
+    status: 'ACTIVE',
+    createdAt: '2026-03-01',
+    avatarBg: 'bg-amber-600',
+  },
+];
+
+export const INITIAL_APPROVAL_REQUESTS: ApprovalRequest[] = [
+  {
+    id: 'req-101',
+    type: 'ADD_ITEM',
+    requestedByUserId: 'usr-user-1',
+    requestedByUserName: 'Rahul Sharma',
+    itemData: {
+      sku: 'TEA-DARJ-009',
+      name: 'Organic Darjeeling First Flush (500g)',
+      category: 'Tea & Spices',
+      quantity: 15,
+      reorderPoint: 5,
+      idealStock: 20,
+      unitCost: 18.00,
+      retailPrice: 35.00,
+      supplier: 'Himalayan Organic Teas',
+      supplierEmail: 'supply@himalayantea.com',
+      leadTimeDays: 4,
+      location: 'Aisle 3 - Shelf B',
+      lastRestocked: '2026-08-11',
+      barcode: '890123456099',
+      notes: 'New organic tea line requested by customers.',
+    },
+    timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
+    status: 'PENDING',
+  },
+  {
+    id: 'req-102',
+    type: 'DELETE_ITEM',
+    requestedByUserId: 'usr-user-2',
+    requestedByUserName: 'Ananya Patel',
+    targetItemId: 'item-8',
+    itemData: {
+      sku: 'MISC-FILTER-001',
+      name: 'Standard V60 Paper Filters (100pk)',
+    },
+    timestamp: new Date(Date.now() - 3600000 * 12).toISOString(),
+    status: 'PENDING',
+  },
+];
 
 export const BUSINESS_PROFILES: BusinessProfile[] = [
   {

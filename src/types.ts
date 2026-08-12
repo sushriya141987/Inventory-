@@ -1,3 +1,28 @@
+export type UserRole = 'ADMIN' | 'USER';
+
+export interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  department: string;
+  status: 'ACTIVE' | 'SUSPENDED';
+  createdAt: string;
+  avatarBg: string;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  type: 'ADD_ITEM' | 'DELETE_ITEM' | 'UPDATE_ITEM';
+  requestedByUserId: string;
+  requestedByUserName: string;
+  itemData: Partial<InventoryItem>;
+  targetItemId?: string;
+  timestamp: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  adminNote?: string;
+}
+
 export type StockStatus = 'healthy' | 'low' | 'out_of_stock' | 'overstocked';
 
 export interface InventoryItem {

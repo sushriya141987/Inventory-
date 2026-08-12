@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { InventoryItem, StockLog, BusinessProfile } from './types';
-import { INITIAL_ITEMS, INITIAL_LOGS, BUSINESS_PROFILES } from './data/initialData';
+import { InventoryItem, StockLog, BusinessProfile, AppUser, UserRole, ApprovalRequest } from './types';
+import { INITIAL_ITEMS, INITIAL_LOGS, BUSINESS_PROFILES, INITIAL_USERS, INITIAL_APPROVAL_REQUESTS } from './data/initialData';
 import { getStockStatus, exportInventoryToCSV } from './utils/inventoryUtils';
 
 import { Header } from './components/Header';
@@ -19,9 +19,12 @@ import { AIInsightsPanel } from './components/AIInsightsPanel';
 import { AnalyticsCharts } from './components/AnalyticsCharts';
 import { ActivityLogDrawer } from './components/ActivityLogDrawer';
 import { PurchaseOrderModal } from './components/PurchaseOrderModal';
+import { UserManagementView } from './components/UserManagementView';
 
 const STORAGE_ITEMS_KEY = 'inventory_brief_items_v2';
 const STORAGE_LOGS_KEY = 'inventory_brief_logs_v2';
+const STORAGE_USERS_KEY = 'inventory_brief_users_v2';
+const STORAGE_APPROVALS_KEY = 'inventory_brief_approvals_v2';
 
 export default function App() {
   const [currentProfile, setCurrentProfile] = useState<BusinessProfile>(BUSINESS_PROFILES[0]);
@@ -43,8 +46,36 @@ export default function App() {
     return INITIAL_LOGS;
   });
 
+  // Users state
+  const [users, setUsers] = useState<AppUser[]>(() => {
+    const saved = localStorage.getItem(STORAGE_USERS_KEY);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return INITIAL_USERS;
+  });
+
+  const [currentUser, setCurrentUser] = useState<AppUser>(() => users[0] || INITIAL_USERS[0]);
+
+  // Pending approval requests state
+  const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>(() => {
+    const saved = localStorage.getItem(STORAGE_APPROVALS_KEY);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return INITIAL_APPROVAL_REQUESTS;
+  });
+
+  // Feedback notification toast message
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
+
   // UI state
-  const [activeTab, setActiveTab] = useState<'inventory' | 'insights' | 'analytics'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'insights' | 'analytics' | 'users'>('inventory');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
@@ -69,6 +100,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_LOGS_KEY, JSON.stringify(logs));
   }, [logs]);
+
+  // Persist users
+  useEffect(() => {
+    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(users));
+  }, [users]);
+
+  // Persist approvals
+  useEffect(() => {
+    localStorage.setItem(STORAGE_APPROVALS_KEY, JSON.stringify(approvalRequests));
+  }, [approvalRequests]);
 
   // Simulated live customer sales traffic loop
   useEffect(() => {
@@ -221,10 +262,127 @@ export default function App() {
       setItems((prev) =>
         prev.map((i) => (i.id === itemData.id ? ({ ...itemData, id: itemData.id } as InventoryItem) : i))
       );
+      showToast(`Updated SKU ${itemData.sku}`);
     } else {
-      // Create new
+      // If Admin, create immediately. If Limited User, create an approval request.
+      if (currentUser.role === 'ADMIN') {
+        const newItem: InventoryItem = {
+          ...itemData,
+          id: 'item-' + Date.now(),
+        };
+        setItems((prev) => [newItem, ...prev]);
+
+        const newLog: StockLog = {
+          id: 'log-' + Date.now(),
+          itemId: newItem.id,
+          itemName: newItem.name,
+          sku: newItem.sku,
+          changeAmount: newItem.quantity,
+          newQuantity: newItem.quantity,
+          type: 'restock',
+          timestamp: new Date().toISOString(),
+          note: `SKU created by Admin (${currentUser.name})`,
+        };
+        setLogs((prev) => [newLog, ...prev]);
+        showToast(`Created new SKU ${newItem.sku}`);
+      } else {
+        // Staff user requires admin approval for addition
+        const newReq: ApprovalRequest = {
+          id: 'req-' + Date.now(),
+          type: 'ADD_ITEM',
+          requestedByUserId: currentUser.id,
+          requestedByUserName: currentUser.name,
+          itemData,
+          timestamp: new Date().toISOString(),
+          status: 'PENDING',
+        };
+        setApprovalRequests((prev) => [newReq, ...prev]);
+        showToast(`SKU addition request submitted to Admin for final approval.`);
+      }
+    }
+  };
+
+  const handleDeleteItem = (id: string) => {
+    const targetItem = items.find((i) => i.id === id);
+    if (!targetItem) return;
+
+    if (currentUser.role === 'ADMIN') {
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      const newLog: StockLog = {
+        id: 'log-' + Date.now(),
+        itemId: targetItem.id,
+        itemName: targetItem.name,
+        sku: targetItem.sku,
+        changeAmount: -targetItem.quantity,
+        newQuantity: 0,
+        type: 'adjustment',
+        timestamp: new Date().toISOString(),
+        note: `SKU deleted by Admin (${currentUser.name})`,
+      };
+      setLogs((prev) => [newLog, ...prev]);
+      showToast(`Deleted SKU ${targetItem.sku}`);
+    } else {
+      // Staff user requires admin approval for deletion
+      const newReq: ApprovalRequest = {
+        id: 'req-' + Date.now(),
+        type: 'DELETE_ITEM',
+        requestedByUserId: currentUser.id,
+        requestedByUserName: currentUser.name,
+        targetItemId: id,
+        itemData: targetItem,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+      };
+      setApprovalRequests((prev) => [newReq, ...prev]);
+      showToast(`Deletion request for SKU ${targetItem.sku} sent to Admin for approval.`);
+    }
+  };
+
+  // User Management Handlers
+  const handleAddUser = (userData: Omit<AppUser, 'id' | 'createdAt'>) => {
+    const newUser: AppUser = {
+      ...userData,
+      id: 'usr-' + Date.now(),
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+    setUsers((prev) => [...prev, newUser]);
+    showToast(`Created new user ${newUser.name} (${newUser.role})`);
+  };
+
+  const handleUpdateUserRole = (userId: string, newRole: UserRole) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+    );
+    if (currentUser.id === userId) {
+      setCurrentUser((prev) => ({ ...prev, role: newRole }));
+    }
+    showToast(`Updated user role to ${newRole}`);
+  };
+
+  const handleToggleUserStatus = (userId: string) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? { ...u, status: u.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' }
+          : u
+      )
+    );
+    showToast(`Toggled user status`);
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+    showToast(`User deleted permanently`);
+  };
+
+  // Approval Handlers
+  const handleApproveRequest = (requestId: string) => {
+    const req = approvalRequests.find((r) => r.id === requestId);
+    if (!req || req.status !== 'PENDING') return;
+
+    if (req.type === 'ADD_ITEM') {
       const newItem: InventoryItem = {
-        ...itemData,
+        ...(req.itemData as InventoryItem),
         id: 'item-' + Date.now(),
       };
       setItems((prev) => [newItem, ...prev]);
@@ -238,15 +396,40 @@ export default function App() {
         newQuantity: newItem.quantity,
         type: 'restock',
         timestamp: new Date().toISOString(),
-        note: 'Initial SKU created in system',
+        note: `Approved addition requested by ${req.requestedByUserName}`,
+      };
+      setLogs((prev) => [newLog, ...prev]);
+    } else if (req.type === 'DELETE_ITEM' && req.targetItemId) {
+      setItems((prev) => prev.filter((i) => i.id !== req.targetItemId));
+
+      const newLog: StockLog = {
+        id: 'log-' + Date.now(),
+        itemId: req.targetItemId,
+        itemName: req.itemData.name || 'Deleted Item',
+        sku: req.itemData.sku || 'N/A',
+        changeAmount: 0,
+        newQuantity: 0,
+        type: 'adjustment',
+        timestamp: new Date().toISOString(),
+        note: `Approved deletion requested by ${req.requestedByUserName}`,
       };
       setLogs((prev) => [newLog, ...prev]);
     }
+
+    setApprovalRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status: 'APPROVED' } : r))
+    );
+    showToast(`Approved request from ${req.requestedByUserName}`);
   };
 
-  const handleDeleteItem = (id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+  const handleRejectRequest = (requestId: string, adminNote?: string) => {
+    setApprovalRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status: 'REJECTED', adminNote } : r))
+    );
+    showToast(`Request rejected.`);
   };
+
+  const pendingApprovalsCount = approvalRequests.filter((r) => r.status === 'PENDING').length;
 
   const handleExportCSV = () => {
     exportInventoryToCSV(items, `${currentProfile.name.toLowerCase().replace(/\s+/g, '_')}_inventory.csv`);
@@ -277,10 +460,22 @@ export default function App() {
         onExportCSV={handleExportCSV}
         activeTab={activeTab}
         onChangeTab={setActiveTab}
+        currentUser={currentUser}
+        users={users}
+        onSwitchUser={setCurrentUser}
+        pendingApprovalsCount={pendingApprovalsCount}
       />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Toast Banner */}
+        {toastMessage && (
+          <div className="mb-4 p-3 bg-slate-900 text-white dark:bg-emerald-600 rounded-xl shadow-lg flex items-center justify-between text-xs font-bold animate-fadeIn">
+            <span>{toastMessage}</span>
+            <button onClick={() => setToastMessage(null)} className="opacity-80 hover:opacity-100">✕</button>
+          </div>
+        )}
+
         {/* Executive Metrics Overview */}
         <MetricsOverview
           items={items}
@@ -356,6 +551,21 @@ export default function App() {
 
         {activeTab === 'analytics' && (
           <AnalyticsCharts items={items} currency={currentProfile.currency} />
+        )}
+
+        {activeTab === 'users' && (
+          <UserManagementView
+            users={users}
+            currentUser={currentUser}
+            approvalRequests={approvalRequests}
+            onAddUser={handleAddUser}
+            onUpdateUserRole={handleUpdateUserRole}
+            onToggleUserStatus={handleToggleUserStatus}
+            onDeleteUser={handleDeleteUser}
+            onApproveRequest={handleApproveRequest}
+            onRejectRequest={handleRejectRequest}
+            inventoryItems={items}
+          />
         )}
       </main>
 
