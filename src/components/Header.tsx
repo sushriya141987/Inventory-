@@ -13,7 +13,8 @@ import {
   Users,
   ShieldCheck,
   UserCheck,
-  ChevronDown
+  ChevronDown,
+  FileText
 } from 'lucide-react';
 import { BusinessProfile, AppUser } from '../types';
 import { BUSINESS_PROFILES } from '../data/initialData';
@@ -31,8 +32,8 @@ interface HeaderProps {
   onOpenPO: () => void;
   onOpenActivityLog: () => void;
   onExportCSV: () => void;
-  activeTab: 'inventory' | 'analytics' | 'insights' | 'users';
-  onChangeTab: (tab: 'inventory' | 'analytics' | 'insights' | 'users') => void;
+  activeTab: 'inventory' | 'analytics' | 'insights' | 'users' | 'reports';
+  onChangeTab: (tab: 'inventory' | 'analytics' | 'insights' | 'users' | 'reports') => void;
   currentUser: AppUser;
   users: AppUser[];
   onSwitchUser: (user: AppUser) => void;
@@ -159,6 +160,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Analytics
+            </button>
+
+            <button
+              onClick={() => onChangeTab('reports')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'reports'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5 text-blue-500" />
+              Reports
             </button>
 
             <button
@@ -301,6 +314,14 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             Analytics
+          </button>
+          <button
+            onClick={() => onChangeTab('reports')}
+            className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
+              activeTab === 'reports' ? 'bg-blue-600 text-white' : 'text-slate-600'
+            }`}
+          >
+            Reports
           </button>
           <button
             onClick={() => onChangeTab('users')}

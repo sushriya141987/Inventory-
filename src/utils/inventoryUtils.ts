@@ -91,6 +91,42 @@ export function exportInventoryToCSV(items: InventoryItem[], filename = 'invento
   document.body.removeChild(link);
 }
 
+export function exportAuditTrailToCSV(auditLogs: any[], filename = 'audit_trail_export.csv') {
+  const headers = [
+    'Log ID',
+    'Category',
+    'Action',
+    'Performed By (Name)',
+    'Performed By (Role)',
+    'Target Entity',
+    'Details',
+    'Timestamp',
+    'IP Address'
+  ];
+
+  const rows = auditLogs.map(log => [
+    `"${log.id}"`,
+    `"${log.category}"`,
+    `"${log.action.replace(/"/g, '""')}"`,
+    `"${log.actorName.replace(/"/g, '""')}"`,
+    `"${log.actorRole}"`,
+    `"${log.targetEntity.replace(/"/g, '""')}"`,
+    `"${log.details.replace(/"/g, '""')}"`,
+    `"${log.timestamp}"`,
+    `"${log.ipAddress || ''}"`
+  ]);
+
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 export function generateRandomBarcode(): string {
   const prefix = '890';
   const random8 = Math.floor(10000000 + Math.random() * 90000000).toString();

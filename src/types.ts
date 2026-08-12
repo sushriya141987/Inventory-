@@ -1,5 +1,20 @@
 export type UserRole = 'ADMIN' | 'USER';
 
+export type AuditCategory = 'STOCK_UPDATE' | 'APPROVAL' | 'USER_MANAGEMENT' | 'ITEM_MANAGEMENT';
+
+export interface AuditTrailEvent {
+  id: string;
+  category: AuditCategory;
+  action: string;
+  actorId: string;
+  actorName: string;
+  actorRole: UserRole;
+  targetEntity: string;
+  details: string;
+  timestamp: string;
+  ipAddress?: string;
+}
+
 export interface AppUser {
   id: string;
   name: string;

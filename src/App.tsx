@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { InventoryItem, StockLog, BusinessProfile, AppUser, UserRole, ApprovalRequest } from './types';
-import { INITIAL_ITEMS, INITIAL_LOGS, BUSINESS_PROFILES, INITIAL_USERS, INITIAL_APPROVAL_REQUESTS } from './data/initialData';
-import { getStockStatus, exportInventoryToCSV } from './utils/inventoryUtils';
+import { InventoryItem, StockLog, BusinessProfile, AppUser, UserRole, ApprovalRequest, AuditTrailEvent, AuditCategory } from './types';
+import { INITIAL_ITEMS, INITIAL_LOGS, BUSINESS_PROFILES, INITIAL_USERS, INITIAL_APPROVAL_REQUESTS, INITIAL_AUDIT_LOGS } from './data/initialData';
+import { getStockStatus, exportInventoryToCSV, exportAuditTrailToCSV } from './utils/inventoryUtils';
 
 import { Header } from './components/Header';
 import { MetricsOverview } from './components/MetricsOverview';
@@ -20,11 +20,13 @@ import { AnalyticsCharts } from './components/AnalyticsCharts';
 import { ActivityLogDrawer } from './components/ActivityLogDrawer';
 import { PurchaseOrderModal } from './components/PurchaseOrderModal';
 import { UserManagementView } from './components/UserManagementView';
+import { InventoryReportsView } from './components/InventoryReportsView';
 
 const STORAGE_ITEMS_KEY = 'inventory_brief_items_v2';
 const STORAGE_LOGS_KEY = 'inventory_brief_logs_v2';
 const STORAGE_USERS_KEY = 'inventory_brief_users_v2';
 const STORAGE_APPROVALS_KEY = 'inventory_brief_approvals_v2';
+const STORAGE_AUDIT_LOGS_KEY = 'inventory_brief_audit_logs_v2';
 
 export default function App() {
   const [currentProfile, setCurrentProfile] = useState<BusinessProfile>(BUSINESS_PROFILES[0]);
@@ -66,6 +68,44 @@ export default function App() {
     return INITIAL_APPROVAL_REQUESTS;
   });
 
+  // Audit trail state
+  const [auditLogs, setAuditLogs] = useState<AuditTrailEvent[]>(() => {
+    const saved = localStorage.getItem(STORAGE_AUDIT_LOGS_KEY);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return INITIAL_AUDIT_LOGS;
+  });
+
+  // Save audit logs to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_AUDIT_LOGS_KEY, JSON.stringify(auditLogs));
+  }, [auditLogs]);
+
+  // Helper to record audit trail events
+  const addAuditLog = (
+    category: AuditCategory,
+    action: string,
+    targetEntity: string,
+    details: string,
+    actor?: AppUser
+  ) => {
+    const currentActor = actor || currentUser;
+    const newLog: AuditTrailEvent = {
+      id: 'adt-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      category,
+      action,
+      actorId: currentActor.id,
+      actorName: currentActor.name,
+      actorRole: currentActor.role,
+      targetEntity,
+      details,
+      timestamp: new Date().toISOString(),
+      ipAddress: '192.168.1.10',
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
   // Feedback notification toast message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -75,7 +115,7 @@ export default function App() {
   };
 
   // UI state
-  const [activeTab, setActiveTab] = useState<'inventory' | 'insights' | 'analytics' | 'users'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'insights' | 'analytics' | 'users' | 'reports'>('inventory');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
@@ -182,6 +222,14 @@ export default function App() {
           };
           setLogs((prevLogs) => [newLog, ...prevLogs]);
 
+          // Audit Log
+          addAuditLog(
+            'STOCK_UPDATE',
+            delta > 0 ? 'Stock Restocked' : 'Stock Quantity Deducted',
+            `SKU: ${item.sku} (${item.name})`,
+            `Stock quantity adjusted by ${delta > 0 ? '+' : ''}${delta} units. Updated level: ${newQty} units.`
+          );
+
           return { ...item, quantity: newQty };
         }
         return item;
@@ -207,6 +255,14 @@ export default function App() {
             note: note || `Restocked +${restockQty} units`,
           };
           setLogs((prevLogs) => [newLog, ...prevLogs]);
+
+          // Audit Log
+          addAuditLog(
+            'STOCK_UPDATE',
+            'Stock Restocked',
+            `SKU: ${item.sku} (${item.name})`,
+            `Restocked +${restockQty} units. Updated stock level: ${newQty} units. Note: ${note || 'Quick Restock'}`
+          );
 
           return {
             ...item,
@@ -253,6 +309,13 @@ export default function App() {
         return item;
       });
     });
+
+    addAuditLog(
+      'STOCK_UPDATE',
+      'Batch Supplier Restock',
+      `PO Order (${restockList.length} SKUs)`,
+      `Processed supplier purchase order delivery restocking ${restockList.length} items.`
+    );
   };
 
   // Add / Edit Item
@@ -261,6 +324,12 @@ export default function App() {
       // Edit existing
       setItems((prev) =>
         prev.map((i) => (i.id === itemData.id ? ({ ...itemData, id: itemData.id } as InventoryItem) : i))
+      );
+      addAuditLog(
+        'ITEM_MANAGEMENT',
+        'SKU Modified',
+        `SKU: ${itemData.sku} (${itemData.name})`,
+        `Updated SKU details (Cost: ${itemData.unitCost}, Price: ${itemData.retailPrice}, Location: ${itemData.location}).`
       );
       showToast(`Updated SKU ${itemData.sku}`);
     } else {
@@ -284,6 +353,13 @@ export default function App() {
           note: `SKU created by Admin (${currentUser.name})`,
         };
         setLogs((prev) => [newLog, ...prev]);
+
+        addAuditLog(
+          'ITEM_MANAGEMENT',
+          'SKU Created',
+          `SKU: ${newItem.sku} (${newItem.name})`,
+          `Created new inventory SKU directly with initial stock of ${newItem.quantity} units.`
+        );
         showToast(`Created new SKU ${newItem.sku}`);
       } else {
         // Staff user requires admin approval for addition
@@ -297,6 +373,13 @@ export default function App() {
           status: 'PENDING',
         };
         setApprovalRequests((prev) => [newReq, ...prev]);
+
+        addAuditLog(
+          'APPROVAL',
+          'Addition Requested',
+          `SKU: ${itemData.sku} (${itemData.name})`,
+          `Staff user ${currentUser.name} requested SKU creation for ${itemData.quantity} units. Awaiting Admin final approval.`
+        );
         showToast(`SKU addition request submitted to Admin for final approval.`);
       }
     }
@@ -320,6 +403,13 @@ export default function App() {
         note: `SKU deleted by Admin (${currentUser.name})`,
       };
       setLogs((prev) => [newLog, ...prev]);
+
+      addAuditLog(
+        'ITEM_MANAGEMENT',
+        'SKU Deleted',
+        `SKU: ${targetItem.sku} (${targetItem.name})`,
+        `Permanently removed SKU from active catalog by Admin (${currentUser.name}).`
+      );
       showToast(`Deleted SKU ${targetItem.sku}`);
     } else {
       // Staff user requires admin approval for deletion
@@ -334,6 +424,13 @@ export default function App() {
         status: 'PENDING',
       };
       setApprovalRequests((prev) => [newReq, ...prev]);
+
+      addAuditLog(
+        'APPROVAL',
+        'Deletion Requested',
+        `SKU: ${targetItem.sku} (${targetItem.name})`,
+        `Staff user ${currentUser.name} requested SKU deletion. Awaiting Admin final approval.`
+      );
       showToast(`Deletion request for SKU ${targetItem.sku} sent to Admin for approval.`);
     }
   };
@@ -346,20 +443,38 @@ export default function App() {
       createdAt: new Date().toISOString().split('T')[0],
     };
     setUsers((prev) => [...prev, newUser]);
+
+    addAuditLog(
+      'USER_MANAGEMENT',
+      'User Created',
+      `User: ${newUser.name} (${newUser.email})`,
+      `Created new user account with role ${newUser.role} in department ${newUser.department}.`
+    );
     showToast(`Created new user ${newUser.name} (${newUser.role})`);
   };
 
   const handleUpdateUserRole = (userId: string, newRole: UserRole) => {
+    const targetUser = users.find((u) => u.id === userId);
     setUsers((prev) =>
       prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
     );
     if (currentUser.id === userId) {
       setCurrentUser((prev) => ({ ...prev, role: newRole }));
     }
+
+    addAuditLog(
+      'USER_MANAGEMENT',
+      'User Role Modified',
+      `User: ${targetUser ? targetUser.name : userId}`,
+      `Updated user access role permissions to ${newRole}.`
+    );
     showToast(`Updated user role to ${newRole}`);
   };
 
   const handleToggleUserStatus = (userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
+    const newStatus = targetUser?.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+
     setUsers((prev) =>
       prev.map((u) =>
         u.id === userId
@@ -367,11 +482,26 @@ export default function App() {
           : u
       )
     );
+
+    addAuditLog(
+      'USER_MANAGEMENT',
+      'User Status Changed',
+      `User: ${targetUser ? targetUser.name : userId}`,
+      `Toggled user account status to ${newStatus}.`
+    );
     showToast(`Toggled user status`);
   };
 
   const handleDeleteUser = (userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
     setUsers((prev) => prev.filter((u) => u.id !== userId));
+
+    addAuditLog(
+      'USER_MANAGEMENT',
+      'User Deleted',
+      `User: ${targetUser ? targetUser.name : userId}`,
+      `Permanently deleted user account from the system.`
+    );
     showToast(`User deleted permanently`);
   };
 
@@ -399,6 +529,13 @@ export default function App() {
         note: `Approved addition requested by ${req.requestedByUserName}`,
       };
       setLogs((prev) => [newLog, ...prev]);
+
+      addAuditLog(
+        'APPROVAL',
+        'Request Approved',
+        `SKU: ${newItem.sku} (${newItem.name})`,
+        `Approved SKU addition request from ${req.requestedByUserName}. Item added to inventory with ${newItem.quantity} units.`
+      );
     } else if (req.type === 'DELETE_ITEM' && req.targetItemId) {
       setItems((prev) => prev.filter((i) => i.id !== req.targetItemId));
 
@@ -414,6 +551,13 @@ export default function App() {
         note: `Approved deletion requested by ${req.requestedByUserName}`,
       };
       setLogs((prev) => [newLog, ...prev]);
+
+      addAuditLog(
+        'APPROVAL',
+        'Request Approved',
+        `SKU: ${req.itemData.sku || 'N/A'} (${req.itemData.name || 'Item'})`,
+        `Approved SKU deletion request from ${req.requestedByUserName}. Item permanently deleted.`
+      );
     }
 
     setApprovalRequests((prev) =>
@@ -423,9 +567,20 @@ export default function App() {
   };
 
   const handleRejectRequest = (requestId: string, adminNote?: string) => {
+    const req = approvalRequests.find((r) => r.id === requestId);
+
     setApprovalRequests((prev) =>
       prev.map((r) => (r.id === requestId ? { ...r, status: 'REJECTED', adminNote } : r))
     );
+
+    if (req) {
+      addAuditLog(
+        'APPROVAL',
+        'Request Rejected',
+        `SKU: ${req.itemData.sku || 'N/A'}`,
+        `Rejected ${req.type === 'ADD_ITEM' ? 'addition' : 'deletion'} request from ${req.requestedByUserName}. Admin note: ${adminNote || 'None'}`
+      );
+    }
     showToast(`Request rejected.`);
   };
 
@@ -433,6 +588,10 @@ export default function App() {
 
   const handleExportCSV = () => {
     exportInventoryToCSV(items, `${currentProfile.name.toLowerCase().replace(/\s+/g, '_')}_inventory.csv`);
+  };
+
+  const handleExportAuditCSV = () => {
+    exportAuditTrailToCSV(auditLogs, `${currentProfile.name.toLowerCase().replace(/\s+/g, '_')}_audit_trail.csv`);
   };
 
   const handleUpdateCurrency = (newCurrency: string) => {
@@ -553,11 +712,21 @@ export default function App() {
           <AnalyticsCharts items={items} currency={currentProfile.currency} />
         )}
 
+        {activeTab === 'reports' && (
+          <InventoryReportsView
+            items={items}
+            logs={logs}
+            currency={currentProfile.currency}
+            currentProfile={currentProfile}
+          />
+        )}
+
         {activeTab === 'users' && (
           <UserManagementView
             users={users}
             currentUser={currentUser}
             approvalRequests={approvalRequests}
+            auditLogs={auditLogs}
             onAddUser={handleAddUser}
             onUpdateUserRole={handleUpdateUserRole}
             onToggleUserStatus={handleToggleUserStatus}
@@ -565,6 +734,7 @@ export default function App() {
             onApproveRequest={handleApproveRequest}
             onRejectRequest={handleRejectRequest}
             inventoryItems={items}
+            onExportAuditLogs={handleExportAuditCSV}
           />
         )}
       </main>

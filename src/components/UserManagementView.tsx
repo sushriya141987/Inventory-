@@ -17,14 +17,26 @@ import {
   Sparkles,
   Info,
   Check,
-  X
+  X,
+  Shield,
+  FileSpreadsheet,
+  Download,
+  RefreshCw,
+  PackageCheck,
+  PlusCircle,
+  Edit3,
+  Filter,
+  Layers,
+  History,
+  Activity
 } from 'lucide-react';
-import { AppUser, UserRole, ApprovalRequest, InventoryItem } from '../types';
+import { AppUser, UserRole, ApprovalRequest, InventoryItem, AuditTrailEvent, AuditCategory } from '../types';
 
 interface UserManagementViewProps {
   users: AppUser[];
   currentUser: AppUser;
   approvalRequests: ApprovalRequest[];
+  auditLogs: AuditTrailEvent[];
   onAddUser: (user: Omit<AppUser, 'id' | 'createdAt'>) => void;
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
   onToggleUserStatus: (userId: string) => void;
@@ -32,12 +44,14 @@ interface UserManagementViewProps {
   onApproveRequest: (requestId: string) => void;
   onRejectRequest: (requestId: string, adminNote?: string) => void;
   inventoryItems: InventoryItem[];
+  onExportAuditLogs: () => void;
 }
 
 export const UserManagementView: React.FC<UserManagementViewProps> = ({
   users,
   currentUser,
   approvalRequests,
+  auditLogs,
   onAddUser,
   onUpdateUserRole,
   onToggleUserStatus,
@@ -45,11 +59,17 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   onApproveRequest,
   onRejectRequest,
   inventoryItems,
+  onExportAuditLogs,
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'approvals'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'approvals' | 'audit'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
+  // Audit filters state
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState<'ALL' | AuditCategory>('ALL');
+  const [auditActorFilter, setAuditActorFilter] = useState<string>('ALL');
+  const [auditSearch, setAuditSearch] = useState<string>('');
 
   // New user form state
   const [newName, setNewName] = useState('');
@@ -64,11 +84,33 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const staffCount = users.filter((u) => u.role === 'USER').length;
   const pendingRequestsCount = approvalRequests.filter((r) => r.status === 'PENDING').length;
 
+  // Filtered users
   const filteredUsers = users.filter((u) =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.department.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Filtered audit logs
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    const matchesCategory = auditCategoryFilter === 'ALL' || log.category === auditCategoryFilter;
+    const matchesActor = auditActorFilter === 'ALL' || log.actorId === auditActorFilter;
+    const query = auditSearch.toLowerCase();
+    const matchesSearch =
+      !query ||
+      log.action.toLowerCase().includes(query) ||
+      log.actorName.toLowerCase().includes(query) ||
+      log.targetEntity.toLowerCase().includes(query) ||
+      log.details.toLowerCase().includes(query);
+
+    return matchesCategory && matchesActor && matchesSearch;
+  });
+
+  // Audit counts
+  const stockUpdateLogsCount = auditLogs.filter((l) => l.category === 'STOCK_UPDATE').length;
+  const approvalLogsCount = auditLogs.filter((l) => l.category === 'APPROVAL').length;
+  const userLogsCount = auditLogs.filter((l) => l.category === 'USER_MANAGEMENT').length;
+  const itemLogsCount = auditLogs.filter((l) => l.category === 'ITEM_MANAGEMENT').length;
 
   const handleCreateUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,11 +207,11 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setActiveTab('users')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
               activeTab === 'users'
                 ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -181,7 +223,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
           <button
             onClick={() => setActiveTab('approvals')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors relative ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors relative whitespace-nowrap ${
               activeTab === 'approvals'
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -195,10 +237,22 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab('audit')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors relative whitespace-nowrap ${
+              activeTab === 'audit'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Shield className="h-4 w-4 text-purple-200" />
+            <span>System Audit Trail ({auditLogs.length})</span>
+          </button>
         </div>
 
         {activeTab === 'users' && (
-          <div className="relative w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               type="text"
@@ -511,6 +565,241 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 3: Audit Trail Log Explorer */}
+      {activeTab === 'audit' && (
+        <div className="space-y-4">
+          {/* Audit Header & CSV Export */}
+          <div className="p-5 bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/80 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-purple-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+                <Shield className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    System Operations Audit Trail
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                    Compliance & Security Log
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                  Immutable record tracking stock quantity updates, approval workflows (approved by / requested by), SKU additions/deletions, and user role creation/modifications.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={onExportAuditLogs}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all shrink-0"
+            >
+              <Download className="h-4 w-4" />
+              <span>Export Audit Trail CSV</span>
+            </button>
+          </div>
+
+          {/* Audit Stats Breakdown */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Audit Events</div>
+              <div className="text-lg font-black text-slate-900 dark:text-white mt-1">{auditLogs.length}</div>
+            </div>
+
+            <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock Updates</div>
+              <div className="text-lg font-black text-indigo-600 dark:text-indigo-400 mt-1">{stockUpdateLogsCount}</div>
+            </div>
+
+            <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Approval Events</div>
+              <div className="text-lg font-black text-amber-600 dark:text-amber-400 mt-1">{approvalLogsCount}</div>
+            </div>
+
+            <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">User Admin Events</div>
+              <div className="text-lg font-black text-purple-600 dark:text-purple-400 mt-1">{userLogsCount}</div>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Category Filter Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+                <button
+                  onClick={() => setAuditCategoryFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    auditCategoryFilter === 'ALL'
+                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  All ({auditLogs.length})
+                </button>
+
+                <button
+                  onClick={() => setAuditCategoryFilter('STOCK_UPDATE')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    auditCategoryFilter === 'STOCK_UPDATE'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  Stock Updates ({stockUpdateLogsCount})
+                </button>
+
+                <button
+                  onClick={() => setAuditCategoryFilter('APPROVAL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    auditCategoryFilter === 'APPROVAL'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  Approvals ({approvalLogsCount})
+                </button>
+
+                <button
+                  onClick={() => setAuditCategoryFilter('ITEM_MANAGEMENT')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    auditCategoryFilter === 'ITEM_MANAGEMENT'
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  SKU Created/Mods ({itemLogsCount})
+                </button>
+
+                <button
+                  onClick={() => setAuditCategoryFilter('USER_MANAGEMENT')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    auditCategoryFilter === 'USER_MANAGEMENT'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  User Admin ({userLogsCount})
+                </button>
+              </div>
+
+              {/* Actor Filter Dropdown & Search Input */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={auditActorFilter}
+                  onChange={(e) => setAuditActorFilter(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
+                >
+                  <option value="ALL">All Users / System</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.role})
+                    </option>
+                  ))}
+                </select>
+
+                <div className="relative w-48 sm:w-60">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search audit trail..."
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Audit Logs Stream List */}
+          <div className="space-y-3">
+            {filteredAuditLogs.length === 0 ? (
+              <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                <Shield className="h-10 w-10 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+                <div className="text-sm font-bold text-slate-900 dark:text-white">
+                  No Audit Trail Events Found
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Try adjusting your filter category or search query.
+                </p>
+              </div>
+            ) : (
+              filteredAuditLogs.map((log) => {
+                let badgeStyle = 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300';
+                let CategoryIcon = History;
+
+                if (log.category === 'STOCK_UPDATE') {
+                  badgeStyle = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800';
+                  CategoryIcon = RefreshCw;
+                } else if (log.category === 'APPROVAL') {
+                  badgeStyle = 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+                  CategoryIcon = ShieldCheck;
+                } else if (log.category === 'ITEM_MANAGEMENT') {
+                  badgeStyle = 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border-teal-200 dark:border-teal-800';
+                  CategoryIcon = PackageCheck;
+                } else if (log.category === 'USER_MANAGEMENT') {
+                  badgeStyle = 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-200 dark:border-purple-800';
+                  CategoryIcon = Users;
+                }
+
+                return (
+                  <div
+                    key={log.id}
+                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-2xs hover:border-purple-300 dark:hover:border-purple-800 transition-all"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-2.5">
+                        <span className={`px-2.5 py-1 rounded-lg text-[11px] font-black uppercase flex items-center gap-1.5 border ${badgeStyle}`}>
+                          <CategoryIcon className="h-3.5 w-3.5" />
+                          <span>{log.action}</span>
+                        </span>
+
+                        <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                          {log.targetEntity}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    {/* Actor & Details */}
+                    <div className="pt-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 font-medium">Performed By:</span>
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1">
+                            {log.actorName}
+                            <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase ${
+                              log.actorRole === 'ADMIN'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                            }`}>
+                              {log.actorRole === 'ADMIN' ? 'Admin' : 'Staff User'}
+                            </span>
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
+                          {log.details}
+                        </p>
+                      </div>
+
+                      <div className="text-[10px] font-mono text-slate-400 text-right shrink-0">
+                        <div>Log ID: {log.id}</div>
+                        {log.ipAddress && <div>IP: {log.ipAddress}</div>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
 
