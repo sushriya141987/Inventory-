@@ -1,0 +1,6 @@
+{
+  "name": "Inventory Brief",
+  "description": "Real-time inventory management, low-stock alerts, and AI-powered reorder insights for small businesses.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
