@@ -50,11 +50,14 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  const safeItems = items || [];
+  const profileName = currentProfile?.name || 'Business';
+
   // Extract unique categories
   const categories = useMemo(() => {
-    const set = new Set(items.map((i) => i.category));
+    const set = new Set(safeItems.map((i) => i.category || 'Uncategorized'));
     return ['ALL', ...Array.from(set)];
-  }, [items]);
+  }, [safeItems]);
 
   // Overall Financial & Count Metrics
   const summaryMetrics = useMemo(() => {
@@ -66,20 +69,25 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
     let overstockedCount = 0;
     let reorderCostRequired = 0;
 
-    items.forEach((item) => {
+    safeItems.forEach((item) => {
+      const qty = typeof item.quantity === 'number' && !isNaN(item.quantity) ? item.quantity : 0;
+      const cost = typeof item.unitCost === 'number' && !isNaN(item.unitCost) ? item.unitCost : 0;
+      const retail = typeof item.retailPrice === 'number' && !isNaN(item.retailPrice) ? item.retailPrice : 0;
+      const ideal = typeof item.idealStock === 'number' && !isNaN(item.idealStock) ? item.idealStock : 0;
+
       const status = getStockStatus(item);
-      totalCostValuation += item.quantity * item.unitCost;
-      totalRetailValuation += item.quantity * item.retailPrice;
+      totalCostValuation += qty * cost;
+      totalRetailValuation += qty * retail;
 
       if (status === 'healthy') healthyCount++;
       if (status === 'low') {
         lowCount++;
-        const gap = Math.max(0, item.idealStock - item.quantity);
-        reorderCostRequired += gap * item.unitCost;
+        const gap = Math.max(0, ideal - qty);
+        reorderCostRequired += gap * cost;
       }
       if (status === 'out_of_stock') {
         outCount++;
-        reorderCostRequired += item.idealStock * item.unitCost;
+        reorderCostRequired += ideal * cost;
       }
       if (status === 'overstocked') overstockedCount++;
     });
@@ -98,28 +106,29 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
       lowCount,
       outCount,
       overstockedCount,
-      totalSkus: items.length,
+      totalSkus: safeItems.length,
       reorderCostRequired,
     };
-  }, [items]);
+  }, [safeItems]);
 
   // Filtered items based on criteria
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      const matchesCategory = selectedCategory === 'ALL' || item.category === selectedCategory;
+    return safeItems.filter((item) => {
+      const cat = item.category || 'Uncategorized';
+      const matchesCategory = selectedCategory === 'ALL' || cat === selectedCategory;
       const status = getStockStatus(item);
       const matchesStatus = selectedStatus === 'ALL' || status === selectedStatus;
-      const query = searchQuery.toLowerCase();
+      const query = (searchQuery || '').toLowerCase();
       const matchesSearch =
         !query ||
-        item.name.toLowerCase().includes(query) ||
-        item.sku.toLowerCase().includes(query) ||
-        item.supplier.toLowerCase().includes(query) ||
-        item.location.toLowerCase().includes(query);
+        (item.name || '').toLowerCase().includes(query) ||
+        (item.sku || '').toLowerCase().includes(query) ||
+        (item.supplier || '').toLowerCase().includes(query) ||
+        (item.location || '').toLowerCase().includes(query);
 
       return matchesCategory && matchesStatus && matchesSearch;
     });
-  }, [items, selectedCategory, selectedStatus, searchQuery]);
+  }, [safeItems, selectedCategory, selectedStatus, searchQuery]);
 
   // Category Breakdown Aggregations
   const categoryBreakdown = useMemo(() => {
@@ -136,9 +145,10 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
       }
     >();
 
-    items.forEach((item) => {
-      const existing = map.get(item.category) || {
-        category: item.category,
+    safeItems.forEach((item) => {
+      const catKey = item.category || 'Uncategorized';
+      const existing = map.get(catKey) || {
+        category: catKey,
         itemCount: 0,
         totalUnits: 0,
         costValuation: 0,
@@ -147,45 +157,49 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
         reorderItemsCount: 0,
       };
 
-      const cost = item.quantity * item.unitCost;
-      const retail = item.quantity * item.retailPrice;
+      const qty = typeof item.quantity === 'number' && !isNaN(item.quantity) ? item.quantity : 0;
+      const cost = typeof item.unitCost === 'number' && !isNaN(item.unitCost) ? item.unitCost : 0;
+      const retail = typeof item.retailPrice === 'number' && !isNaN(item.retailPrice) ? item.retailPrice : 0;
+
+      const totalCost = qty * cost;
+      const totalRetail = qty * retail;
       const status = getStockStatus(item);
 
-      map.set(item.category, {
-        category: item.category,
+      map.set(catKey, {
+        category: catKey,
         itemCount: existing.itemCount + 1,
-        totalUnits: existing.totalUnits + item.quantity,
-        costValuation: existing.costValuation + cost,
-        retailValuation: existing.retailValuation + retail,
-        potentialProfit: existing.potentialProfit + (retail - cost),
+        totalUnits: existing.totalUnits + qty,
+        costValuation: existing.costValuation + totalCost,
+        retailValuation: existing.retailValuation + totalRetail,
+        potentialProfit: existing.potentialProfit + (totalRetail - totalCost),
         reorderItemsCount: existing.reorderItemsCount + (status === 'low' || status === 'out_of_stock' ? 1 : 0),
       });
     });
 
     return Array.from(map.values()).sort((a, b) => b.costValuation - a.costValuation);
-  }, [items]);
+  }, [safeItems]);
 
   // Replenishment items (low or out of stock)
   const replenishmentItems = useMemo(() => {
-    return items.filter((i) => {
+    return safeItems.filter((i) => {
       const status = getStockStatus(i);
       return status === 'low' || status === 'out_of_stock';
-    }).sort((a, b) => a.quantity - b.quantity);
-  }, [items]);
+    }).sort((a, b) => (a.quantity || 0) - (b.quantity || 0));
+  }, [safeItems]);
 
   // Deadstock / Overstocked items
   const overstockedItems = useMemo(() => {
-    return items.filter((i) => {
+    return safeItems.filter((i) => {
       const status = getStockStatus(i);
       return status === 'overstocked';
-    }).sort((a, b) => (b.quantity - b.idealStock) * b.unitCost - (a.quantity - a.idealStock) * a.unitCost);
-  }, [items]);
+    }).sort((a, b) => ((b.quantity || 0) - (b.idealStock || 0)) * (b.unitCost || 0) - ((a.quantity || 0) - (a.idealStock || 0)) * (a.unitCost || 0));
+  }, [safeItems]);
 
   // Export Active Report to CSV
   const handleExportReportCSV = () => {
     let headers: string[] = [];
     let rows: string[][] = [];
-    let filename = `${currentProfile.name.toLowerCase().replace(/\s+/g, '_')}_${activeReport.toLowerCase()}_report.csv`;
+    let filename = `${profileName.toLowerCase().replace(/\s+/g, '_')}_${activeReport.toLowerCase()}_report.csv`;
 
     if (activeReport === 'EXECUTIVE' || activeReport === 'STOCK_VALUATION') {
       headers = [
@@ -204,22 +218,25 @@ export const InventoryReportsView: React.FC<InventoryReportsViewProps> = ({
       ];
 
       rows = filteredItems.map((item) => {
-        const costVal = item.quantity * item.unitCost;
-        const retailVal = item.quantity * item.retailPrice;
+        const qty = item.quantity || 0;
+        const uCost = item.unitCost || 0;
+        const rPrice = item.retailPrice || 0;
+        const costVal = qty * uCost;
+        const retailVal = qty * rPrice;
         const status = getStockStatus(item);
         return [
-          `"${item.sku}"`,
-          `"${item.name.replace(/"/g, '""')}"`,
-          `"${item.category}"`,
-          `"${item.quantity}"`,
+          `"${item.sku || ''}"`,
+          `"${(item.name || '').replace(/"/g, '""')}"`,
+          `"${item.category || ''}"`,
+          `"${qty}"`,
           `"${status}"`,
-          `"${currency}${item.unitCost.toFixed(2)}"`,
+          `"${currency}${uCost.toFixed(2)}"`,
           `"${currency}${costVal.toFixed(2)}"`,
-          `"${currency}${item.retailPrice.toFixed(2)}"`,
+          `"${currency}${rPrice.toFixed(2)}"`,
           `"${currency}${retailVal.toFixed(2)}"`,
           `"${currency}${(retailVal - costVal).toFixed(2)}"`,
-          `"${item.supplier.replace(/"/g, '""')}"`,
-          `"${item.location}"`
+          `"${(item.supplier || '').replace(/"/g, '""')}"`,
+          `"${item.location || ''}"`
         ];
       });
     } else if (activeReport === 'REPLENISHMENT') {

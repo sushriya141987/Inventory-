@@ -35,7 +35,10 @@ export default function App() {
   const [items, setItems] = useState<InventoryItem[]>(() => {
     const saved = localStorage.getItem(STORAGE_ITEMS_KEY);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) { console.error(e); }
     }
     return INITIAL_ITEMS;
   });
@@ -43,7 +46,10 @@ export default function App() {
   const [logs, setLogs] = useState<StockLog[]>(() => {
     const saved = localStorage.getItem(STORAGE_LOGS_KEY);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { console.error(e); }
     }
     return INITIAL_LOGS;
   });
@@ -52,18 +58,24 @@ export default function App() {
   const [users, setUsers] = useState<AppUser[]>(() => {
     const saved = localStorage.getItem(STORAGE_USERS_KEY);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) { console.error(e); }
     }
     return INITIAL_USERS;
   });
 
-  const [currentUser, setCurrentUser] = useState<AppUser>(() => users[0] || INITIAL_USERS[0]);
+  const [currentUser, setCurrentUser] = useState<AppUser>(() => (users && users.length > 0 ? users[0] : INITIAL_USERS[0]));
 
   // Pending approval requests state
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>(() => {
     const saved = localStorage.getItem(STORAGE_APPROVALS_KEY);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { console.error(e); }
     }
     return INITIAL_APPROVAL_REQUESTS;
   });
@@ -72,7 +84,10 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditTrailEvent[]>(() => {
     const saved = localStorage.getItem(STORAGE_AUDIT_LOGS_KEY);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { console.error(e); }
     }
     return INITIAL_AUDIT_LOGS;
   });
@@ -90,16 +105,16 @@ export default function App() {
     details: string,
     actor?: AppUser
   ) => {
-    const currentActor = actor || currentUser;
+    const currentActor = actor || currentUser || INITIAL_USERS[0];
     const newLog: AuditTrailEvent = {
       id: 'adt-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
       category,
       action,
-      actorId: currentActor.id,
-      actorName: currentActor.name,
-      actorRole: currentActor.role,
-      targetEntity,
-      details,
+      actorId: currentActor.id || 'usr-default',
+      actorName: currentActor.name || 'System User',
+      actorRole: currentActor.role || 'USER',
+      targetEntity: targetEntity || '',
+      details: details || '',
       timestamp: new Date().toISOString(),
       ipAddress: '192.168.1.10',
     };

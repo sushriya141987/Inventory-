@@ -1,9 +1,14 @@
 import { InventoryItem, StockStatus } from '../types';
 
 export function getStockStatus(item: InventoryItem): StockStatus {
-  if (item.quantity <= 0) return 'out_of_stock';
-  if (item.quantity <= item.reorderPoint) return 'low';
-  if (item.quantity >= Math.max(item.idealStock * 1.25, item.reorderPoint * 3)) return 'overstocked';
+  if (!item) return 'out_of_stock';
+  const qty = typeof item.quantity === 'number' && !isNaN(item.quantity) ? item.quantity : 0;
+  const reorderPoint = typeof item.reorderPoint === 'number' && !isNaN(item.reorderPoint) ? item.reorderPoint : 0;
+  const idealStock = typeof item.idealStock === 'number' && !isNaN(item.idealStock) ? item.idealStock : 0;
+
+  if (qty <= 0) return 'out_of_stock';
+  if (qty <= reorderPoint) return 'low';
+  if (qty >= Math.max(idealStock * 1.25, reorderPoint * 3)) return 'overstocked';
   return 'healthy';
 }
 

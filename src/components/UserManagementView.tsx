@@ -77,40 +77,44 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [newRole, setNewRole] = useState<UserRole>('USER');
   const [newDepartment, setNewDepartment] = useState('Warehouse & Operations');
 
-  const isAdmin = currentUser.role === 'ADMIN';
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   // Stats
-  const adminCount = users.filter((u) => u.role === 'ADMIN').length;
-  const staffCount = users.filter((u) => u.role === 'USER').length;
-  const pendingRequestsCount = approvalRequests.filter((r) => r.status === 'PENDING').length;
+  const safeUsers = users || [];
+  const safeApprovals = approvalRequests || [];
+  const safeAuditLogs = auditLogs || [];
+
+  const adminCount = safeUsers.filter((u) => u.role === 'ADMIN').length;
+  const staffCount = safeUsers.filter((u) => u.role === 'USER').length;
+  const pendingRequestsCount = safeApprovals.filter((r) => r.status === 'PENDING').length;
 
   // Filtered users
-  const filteredUsers = users.filter((u) =>
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.department.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredUsers = safeUsers.filter((u) =>
+    (u.name || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
+    (u.email || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
+    (u.department || '').toLowerCase().includes((searchQuery || '').toLowerCase())
   );
 
   // Filtered audit logs
-  const filteredAuditLogs = auditLogs.filter((log) => {
+  const filteredAuditLogs = safeAuditLogs.filter((log) => {
     const matchesCategory = auditCategoryFilter === 'ALL' || log.category === auditCategoryFilter;
     const matchesActor = auditActorFilter === 'ALL' || log.actorId === auditActorFilter;
-    const query = auditSearch.toLowerCase();
+    const query = (auditSearch || '').toLowerCase();
     const matchesSearch =
       !query ||
-      log.action.toLowerCase().includes(query) ||
-      log.actorName.toLowerCase().includes(query) ||
-      log.targetEntity.toLowerCase().includes(query) ||
-      log.details.toLowerCase().includes(query);
+      (log.action || '').toLowerCase().includes(query) ||
+      (log.actorName || '').toLowerCase().includes(query) ||
+      (log.targetEntity || '').toLowerCase().includes(query) ||
+      (log.details || '').toLowerCase().includes(query);
 
     return matchesCategory && matchesActor && matchesSearch;
   });
 
   // Audit counts
-  const stockUpdateLogsCount = auditLogs.filter((l) => l.category === 'STOCK_UPDATE').length;
-  const approvalLogsCount = auditLogs.filter((l) => l.category === 'APPROVAL').length;
-  const userLogsCount = auditLogs.filter((l) => l.category === 'USER_MANAGEMENT').length;
-  const itemLogsCount = auditLogs.filter((l) => l.category === 'ITEM_MANAGEMENT').length;
+  const stockUpdateLogsCount = safeAuditLogs.filter((l) => l.category === 'STOCK_UPDATE').length;
+  const approvalLogsCount = safeAuditLogs.filter((l) => l.category === 'APPROVAL').length;
+  const userLogsCount = safeAuditLogs.filter((l) => l.category === 'USER_MANAGEMENT').length;
+  const itemLogsCount = safeAuditLogs.filter((l) => l.category === 'ITEM_MANAGEMENT').length;
 
   const handleCreateUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
